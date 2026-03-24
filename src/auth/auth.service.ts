@@ -356,6 +356,10 @@ export class AuthService {
     if (session) {
       await this.redisService.del(tokenRevocationRedisKeys.accessSession(session.jti));
       await this.redisService.del(tokenRevocationRedisKeys.refreshSession(session.refreshSessionId));
+      const currentRid = await this.redisService.get(tokenRevocationRedisKeys.userRefreshSession(userId));
+      if (currentRid === session.refreshSessionId) {
+        await this.redisService.del(tokenRevocationRedisKeys.userRefreshSession(userId));
+      }
       const ttl = this.getSessionExpiry(session.lastActivity || session.createdAt);
       if (ttl > 0) {
         await this.redisService.setex(tokenRevocationRedisKeys.accessRevoked(session.jti), Math.ceil(ttl / 1000), userId);
