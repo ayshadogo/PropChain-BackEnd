@@ -10,7 +10,6 @@ export class CreateTransactionDto {
   txHash?: string;
 }
 
-
 export class PaginationParams {
   page?: number;
   limit?: number;

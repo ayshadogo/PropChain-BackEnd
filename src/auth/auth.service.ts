@@ -20,13 +20,13 @@ import { createHash } from 'crypto';
 
 /**
  * Auth Service
- * 
+ *
  * Handles all authentication operations including:
  * - User registration and email verification
  * - Email/Password and Web3 wallet login
  * - JWT Token generation and rotation
  * - Session management and invalidation
- * 
+ *
  * @class AuthService
  */
 @Injectable()
@@ -43,10 +43,10 @@ export class AuthService {
 
   /**
    * Register a new user and send verification email
-   * 
+   *
    * @param {CreateUserDto} createUserDto - The user registration data
    * @returns {Promise<{message: string}>} Success message
-   * 
+   *
    * @example
    * ```typescript
    * const result = await authService.register({
@@ -76,14 +76,14 @@ export class AuthService {
 
   /**
    * Authenticate a user and generate JWT tokens
-   * 
+   *
    * Supports both email/password and Web3 wallet address/signature.
    * Implements login attempt tracking for brute-force protection.
-   * 
+   *
    * @param {Object} credentials - The credentials to authenticate
    * @param {Object} [requestMeta] - Request metadata for session fingerprinting
    * @returns {Promise<AuthResponse>} The generated tokens and user info
-   * 
+   *
    * @example
    * ```typescript
    * // Email login
@@ -91,7 +91,7 @@ export class AuthService {
    *   email: 'dev@propchain.com',
    *   password: 'Password123!'
    * });
-   * 
+   *
    * // Web3 login
    * const auth = await authService.login({
    *   walletAddress: '0x123...',

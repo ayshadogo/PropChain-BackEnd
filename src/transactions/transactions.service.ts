@@ -46,7 +46,6 @@ export class TransactionsService {
         platformFee: fees.platformFee,
         gasFee: fees.estimatedGas,
       },
-
     });
   }
 

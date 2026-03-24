@@ -27,7 +27,6 @@ export class User implements PrismaUser {
   privacySettings: any | null;
   exportRequestedAt: Date | null;
 
-
   // Relationships
   followers?: any[];
   following?: any[];

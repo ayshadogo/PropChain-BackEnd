@@ -14,13 +14,13 @@ import { MultiLevelCacheService } from '../common/cache/multi-level-cache.servic
 
 /**
  * Properties Service
- * 
+ *
  * Manages the lifecycle of real estate properties including:
  * - Creation and address formatting
  * - Search with complex filtering (price, area, bedrooms, etc.)
  * - Caching and cache invalidation
  * - Property statistics and analytics
- * 
+ *
  * @class PropertiesService
  */
 @Injectable()
@@ -35,17 +35,17 @@ export class PropertiesService {
 
   /**
    * Create a new property listing
-   * 
+   *
    * Validates the owner existence, formats the address, and persists the property.
    * Automatically invalidates relevant search and list caches.
-   * 
+   *
    * @param {CreatePropertyDto} createPropertyDto - Property details
    * @param {string} ownerId - ID of the user owning the property
    * @returns {Promise<Property>} The created property with owner info
-   * 
+   *
    * @throws {UserNotFoundException} If the owner ID is invalid
    * @throws {InvalidInputException} If creation fails
-   * 
+   *
    * @example
    * ```typescript
    * const property = await propertiesService.create({
@@ -105,17 +105,17 @@ export class PropertiesService {
 
   /**
    * Search and filter properties with pagination
-   * 
+   *
    * Supports advanced filtering by:
    * - Text search (title, description, location)
    * - Numeric ranges (price, bedrooms, bathrooms, area)
    * - Property status and type
-   * 
+   *
    * Results are cached for 5 minutes by query fingerprint.
-   * 
+   *
    * @param {PropertyQueryDto} query - Search and pagination parameters
    * @returns {Promise<PaginatedPropertyResponse>} Properties and metadata
-   * 
+   *
    * @example
    * ```typescript
    * const result = await propertiesService.findAll({
