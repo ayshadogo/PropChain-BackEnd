@@ -250,6 +250,7 @@ export class UserService {
     // === PASSWORD HISTORY TRACKING ===
     // Add new password to history for rotation policy enforcement
     await this.passwordRotationService.addPasswordToHistory(userId, hashedPassword);
+    await this.invalidateUserReadCaches(userId);
 
     return updatedUser;
   }
@@ -271,10 +272,12 @@ export class UserService {
    * ```
    */
   async verifyUser(userId: string) {
-    return this.prisma.user.update({
+    const user = await this.prisma.user.update({
       where: { id: userId },
       data: { isVerified: true },
     });
+    await this.invalidateUserReadCaches(userId);
+    return user;
   }
 
   /**
@@ -300,105 +303,126 @@ export class UserService {
    * ```
    */
   async updateUser(id: string, data: Partial<{ email: string; walletAddress: string; isActive: boolean }>) {
-    // === EMAIL UNIQUENESS CHECK ===
-    // Prevent email collisions with other users
-    if (data.email) {
-      const existingUser = await this.prisma.user.findFirst({
+    if (data.email || data.walletAddress) {
+      const conflictingUser = await this.prisma.user.findFirst({
         where: {
-          email: data.email,
-          id: { not: id }, // Exclude current user
+          id: { not: id },
+          OR: [
+            ...(data.email ? [{ email: data.email }] : []),
+            ...(data.walletAddress ? [{ walletAddress: data.walletAddress }] : []),
+          ],
+        },
+        select: {
+          email: true,
+          walletAddress: true,
         },
       });
 
-      if (existingUser) {
+      if (conflictingUser?.email === data.email) {
         throw new ConflictException('Email already taken by another user');
       }
-    }
 
-    // === WALLET ADDRESS UNIQUENESS CHECK ===
-    // Prevent wallet address collisions
-    if (data.walletAddress) {
-      const existingUser = await this.prisma.user.findFirst({
-        where: {
-          walletAddress: data.walletAddress,
-          id: { not: id }, // Exclude current user
-        },
-      });
-
-      if (existingUser) {
+      if (conflictingUser?.walletAddress === data.walletAddress) {
         throw new ConflictException('Wallet address already taken by another user');
       }
     }
 
-    return this.prisma.user.update({
+    const user = await this.prisma.user.update({
       where: { id },
       data,
     });
+    await this.invalidateUserReadCaches(id);
+    return user;
   }
   /**
    * Update user profile (bio, location, avatar)
    */
   async updateProfile(userId: string, profile: { bio?: string; location?: string; avatarUrl?: string }) {
-    return this.prisma.user.update({
+    const user = await this.prisma.user.update({
       where: { id: userId },
       data: profile,
     });
+    await this.invalidateUserReadCaches(userId);
+    return user;
   }
 
   /**
    * Update user preferences (JSON)
    */
   async updatePreferences(userId: string, preferences: any) {
-    return this.prisma.user.update({
+    const user = await this.prisma.user.update({
       where: { id: userId },
       data: { preferences },
     });
+    await this.invalidateUserReadCaches(userId);
+    return user;
   }
 
   /**
    * Track user activity
    */
   async logActivity(userId: string, action: string, metadata?: any) {
-    return this.prisma.userActivity.create({
+    const activity = await this.prisma.userActivity.create({
       data: { userId, action, metadata },
     });
+    await Promise.all([
+      this.cacheService.invalidateByPattern(`user:activity:${userId}:*`),
+      this.cacheService.del(`user:analytics:${userId}`),
+    ]);
+    return activity;
   }
 
   /**
    * Get user activity history
    */
   async getActivityHistory(userId: string, limit = 50) {
-    return this.prisma.userActivity.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-    });
+    return this.cacheService.wrap(
+      `user:activity:${userId}:${limit}`,
+      () =>
+        this.monitorQuery('users.getActivityHistory', { userId, limit }, () =>
+          this.prisma.userActivity.findMany({
+            where: { userId },
+            orderBy: { createdAt: 'desc' },
+            take: limit,
+          }),
+        ),
+      { l1Ttl: 30, l2Ttl: 120, tags: ['user', `user:${userId}`] },
+    );
   }
 
   /**
    * Update user avatar
    */
   async updateAvatar(userId: string, avatarUrl: string) {
-    return this.prisma.user.update({
+    const user = await this.prisma.user.update({
       where: { id: userId },
       data: { avatarUrl },
     });
+    await this.invalidateUserReadCaches(userId);
+    return user;
   }
 
   /**
    * Search users by name, email, or location
    */
   async searchUsers(query: string, limit = 20) {
-    return this.prisma.user.findMany({
-      where: {
-        OR: [
-          { email: { contains: query, mode: 'insensitive' } },
-          { bio: { contains: query, mode: 'insensitive' } },
-          { location: { contains: query, mode: 'insensitive' } },
-        ],
-      },
-      take: limit,
-    });
+    return this.cacheService.wrap(
+      `user:search:${query}:${limit}`,
+      () =>
+        this.monitorQuery('users.searchUsers', { query, limit }, () =>
+          this.prisma.user.findMany({
+            where: {
+              OR: [
+                { email: { contains: query, mode: 'insensitive' } },
+                { bio: { contains: query, mode: 'insensitive' } },
+                { location: { contains: query, mode: 'insensitive' } },
+              ],
+            },
+            take: limit,
+          }),
+        ),
+      { l1Ttl: 60, l2Ttl: 180, tags: ['user', 'user:search'] },
+    );
   }
 
   /**
@@ -415,72 +439,174 @@ export class UserService {
     if (existing) {
       return existing;
     }
-    return this.prisma.userRelationship.create({
+    const relationship = await this.prisma.userRelationship.create({
       data: { followerId, followingId },
     });
+    await this.invalidateRelationshipCaches(followerId, followingId);
+    return relationship;
   }
 
   /**
    * Unfollow a user
    */
   async unfollowUser(followerId: string, followingId: string) {
-    return this.prisma.userRelationship.delete({
+    const relationship = await this.prisma.userRelationship.delete({
       where: { followerId_followingId: { followerId, followingId } },
     });
+    await this.invalidateRelationshipCaches(followerId, followingId);
+    return relationship;
   }
 
   /**
    * List followers of a user
    */
   async getFollowers(userId: string, limit = 50) {
-    return this.prisma.userRelationship.findMany({
-      where: { followingId: userId },
+    const query: any = {
+      where: { followingId: userId, status: 'active' },
       take: limit,
-      include: { follower: true },
-    });
+      orderBy: { createdAt: 'desc' },
+      relationLoadStrategy: 'join',
+      select: {
+        id: true,
+        createdAt: true,
+        status: true,
+        follower: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            bio: true,
+            location: true,
+            avatarUrl: true,
+            isVerified: true,
+          },
+        },
+      },
+    };
+
+    return this.cacheService.wrap(
+      `user:followers:${userId}:${limit}`,
+      () => this.monitorQuery('users.getFollowers', { userId, limit }, () => this.prisma.userRelationship.findMany(query)),
+      { l1Ttl: 30, l2Ttl: 120, tags: ['user', `user:${userId}`] },
+    );
   }
 
   /**
    * List users a user is following
    */
   async getFollowing(userId: string, limit = 50) {
-    return this.prisma.userRelationship.findMany({
-      where: { followerId: userId },
+    const query: any = {
+      where: { followerId: userId, status: 'active' },
       take: limit,
-      include: { following: true },
-    });
+      orderBy: { createdAt: 'desc' },
+      relationLoadStrategy: 'join',
+      select: {
+        id: true,
+        createdAt: true,
+        status: true,
+        following: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            bio: true,
+            location: true,
+            avatarUrl: true,
+            isVerified: true,
+          },
+        },
+      },
+    };
+
+    return this.cacheService.wrap(
+      `user:following:${userId}:${limit}`,
+      () => this.monitorQuery('users.getFollowing', { userId, limit }, () => this.prisma.userRelationship.findMany(query)),
+      { l1Ttl: 30, l2Ttl: 120, tags: ['user', `user:${userId}`] },
+    );
   }
 
   /**
    * Get user analytics (basic engagement metrics)
    */
   async getUserAnalytics(userId: string) {
-    const [loginCount, activityCount, followers, following] = await Promise.all([
-      this.prisma.userActivity.count({ where: { userId, action: 'login' } }),
-      this.prisma.userActivity.count({ where: { userId } }),
-      this.prisma.userRelationship.count({ where: { followingId: userId } }),
-      this.prisma.userRelationship.count({ where: { followerId: userId } }),
-    ]);
-    return { loginCount, activityCount, followers, following };
+    return this.cacheService.wrap(
+      `user:analytics:${userId}`,
+      () =>
+        this.monitorQuery('users.getUserAnalytics', { userId }, async () => {
+          const [loginCount, activityCount, followers, following] = await Promise.all([
+            this.prisma.userActivity.count({ where: { userId, action: 'login' } }),
+            this.prisma.userActivity.count({ where: { userId } }),
+            this.prisma.userRelationship.count({ where: { followingId: userId, status: 'active' } }),
+            this.prisma.userRelationship.count({ where: { followerId: userId, status: 'active' } }),
+          ]);
+          return { loginCount, activityCount, followers, following };
+        }),
+      { l1Ttl: 30, l2Ttl: 120, tags: ['user', `user:${userId}`] },
+    );
   }
 
   /**
    * Update privacy settings
    */
   async updatePrivacySettings(userId: string, privacySettings: any) {
-    return this.prisma.user.update({
+    const user = await this.prisma.user.update({
       where: { id: userId },
       data: { privacySettings },
     });
+    await this.invalidateUserReadCaches(userId);
+    return user;
   }
 
   /**
    * Request user data export
    */
   async requestDataExport(userId: string) {
-    return this.prisma.user.update({
+    const user = await this.prisma.user.update({
       where: { id: userId },
       data: { exportRequestedAt: new Date() },
     });
+    await this.invalidateUserReadCaches(userId);
+    return user;
+  }
+
+  private async monitorQuery<T>(
+    operation: string,
+    metadata: Record<string, unknown>,
+    query: () => Promise<T>,
+  ): Promise<T> {
+    const startedAt = Date.now();
+
+    try {
+      const result = await query();
+      const duration = Date.now() - startedAt;
+      const slowThreshold = this.configService.get<number>('SLOW_QUERY_THRESHOLD', 500);
+
+      if (duration >= slowThreshold) {
+        this.logger.warn(`Slow query detected for ${operation}: ${duration}ms ${JSON.stringify(metadata)}`);
+      } else {
+        this.logger.debug(`Query completed for ${operation}: ${duration}ms`);
+      }
+
+      return result;
+    } catch (error) {
+      const duration = Date.now() - startedAt;
+      this.logger.error(`Query failed for ${operation} after ${duration}ms`, error instanceof Error ? error.stack : '');
+      throw error;
+    }
+  }
+
+  private async invalidateUserReadCaches(userId: string): Promise<void> {
+    await Promise.all([
+      this.cacheService.del(`user:detail:${userId}`),
+      this.cacheService.del(`user:analytics:${userId}`),
+      this.cacheService.invalidateByPattern('user:search:*'),
+      this.cacheService.invalidateByPattern(`user:activity:${userId}:*`),
+      this.cacheService.invalidateByPattern(`user:followers:${userId}:*`),
+      this.cacheService.invalidateByPattern(`user:following:${userId}:*`),
+    ]);
+  }
+
+  private async invalidateRelationshipCaches(followerId: string, followingId: string): Promise<void> {
+    await Promise.all([this.invalidateUserReadCaches(followerId), this.invalidateUserReadCaches(followingId)]);
   }
 }
