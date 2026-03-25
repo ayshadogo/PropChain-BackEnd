@@ -9,7 +9,8 @@ export class DocumentFilesUploadInterceptor implements NestInterceptor {
   constructor(private readonly configService: ConfigService) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
-    const multerInterceptor = FilesInterceptor('files', getMultipleFileUploadOptions(this.configService));
+    const MulterInterceptorClass = FilesInterceptor('files', undefined, getMultipleFileUploadOptions(this.configService));
+    const multerInterceptor: NestInterceptor = new MulterInterceptorClass();
     return multerInterceptor.intercept(context, next);
   }
 }
@@ -19,7 +20,8 @@ export class DocumentFileUploadInterceptor implements NestInterceptor {
   constructor(private readonly configService: ConfigService) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
-    const multerInterceptor = FileInterceptor('file', getSingleFileUploadOptions(this.configService));
+    const MulterInterceptorClass = FileInterceptor('file', undefined, getSingleFileUploadOptions(this.configService));
+    const multerInterceptor: NestInterceptor = new MulterInterceptorClass();
     return multerInterceptor.intercept(context, next);
   }
 }

@@ -64,7 +64,9 @@ describe('DocumentService', () => {
         { provide: STORAGE_PROVIDER, useValue: storageProvider },
         {
           provide: MalwareScannerService,
-          useValue: { scanBuffer: jest.fn().mockResolvedValue(true) },
+          useValue: {
+            scanFile: jest.fn().mockResolvedValue({ isClean: true, scanTime: 1, scanner: 'none' }),
+          },
         },
       ],
     }).compile();
