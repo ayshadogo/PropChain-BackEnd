@@ -86,6 +86,29 @@ jobs:
     name: Integration Tests
     needs: setup
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: propchain_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -98,16 +121,46 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Wait for services
+        run: |
+          timeout 60 bash -c 'until nc -z localhost 5432; do sleep 1; done'
+          timeout 60 bash -c 'until nc -z localhost 6379; do sleep 1; done'
 
       - name: Run Integration Tests
         run: npm run test:integration
         env:
           NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/propchain_test
+          REDIS_URL: redis://localhost:6379
 
   test-e2e:
     name: E2E Tests
     needs: setup
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: propchain_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -121,10 +174,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Wait for services
+        run: |
+          timeout 60 bash -c 'until nc -z localhost 5432; do sleep 1; done'
+          timeout 60 bash -c 'until nc -z localhost 6379; do sleep 1; done'
+
       - name: Run E2E Tests
         run: npm run test:e2e
         env:
           NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/propchain_test
+          REDIS_URL: redis://localhost:6379
 
   test-security:
     name: Security Tests
@@ -178,10 +238,134 @@ jobs:
           path: dist/
           retention-days: 1
 
+  observability-test:
+    name: Observability Tests
+    needs: build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: propchain_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+      jaeger:
+        image: jaegertracing/all-in-one:latest
+        options: >-
+          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:16686"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 16686:16686
+          - 4317:4317
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+          path: dist
+
+      - name: Wait for services
+        run: |
+          timeout 60 bash -c 'until nc -z localhost 5432; do sleep 1; done'
+          timeout 60 bash -c 'until nc -z localhost 6379; do sleep 1; done'
+          timeout 60 bash -c 'until nc -z localhost 16686; do sleep 1; done'
+
+      - name: Start Application
+        run: |
+          npm run start &
+          sleep 30
+
+      - name: Test Observability Endpoints
+        run: |
+          curl -f http://localhost:3000/observability/health || exit 1
+          curl -f http://localhost:3000/observability/metrics/current || exit 1
+          curl -f http://localhost:3000/metrics || exit 1
+          curl -f http://localhost:3000/observability/tracing/status || exit 1
+
+      - name: Test Metrics Collection
+        run: |
+          # Test that metrics are being collected
+          response=$(curl -s http://localhost:3000/metrics)
+          if [[ $response == *"http_request_duration_seconds"* ]]; then
+            echo "✅ HTTP metrics found"
+          else
+            echo "❌ HTTP metrics not found"
+            exit 1
+          fi
+
+          if [[ $response == *"system_cpu_usage_percent"* ]]; then
+            echo "✅ System metrics found"
+          else
+            echo "❌ System metrics not found"
+            exit 1
+          fi
+
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/propchain_test
+          REDIS_URL: redis://localhost:6379
+          OTEL_SERVICE_NAME: propchain-backend-test
+          OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4317
+          METRICS_ENABLED: true
+          PERFORMANCE_MONITORING_ENABLED: true
+
   load-test:
     name: Load Testing
     needs: build
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: propchain_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -204,16 +388,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y k6
 
+      - name: Wait for services
+        run: |
+          timeout 60 bash -c 'until nc -z localhost 5432; do sleep 1; done'
+          timeout 60 bash -c 'until nc -z localhost 6379; do sleep 1; done'
+
       - name: Start API in background
         run: |
           npm run start &
-          sleep 10
+          sleep 30
 
       - name: Run load tests
         run: npm run loadtest:ci
         env:
           API_URL: http://localhost:3000
           NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/propchain_test
+          REDIS_URL: redis://localhost:6379
 
       - name: Upload k6 results
         uses: actions/upload-artifact@v4
@@ -223,7 +414,7 @@ jobs:
 
   deploy-staging:
     name: Deploy to Staging
-    needs: [build, test-integration, test-e2e, test-security]
+    needs: [build, test-integration, test-e2e, test-security, observability-test]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     runs-on: ubuntu-latest
     environment: staging

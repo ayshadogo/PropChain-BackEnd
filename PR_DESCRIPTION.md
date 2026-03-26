@@ -1,144 +1,252 @@
-# Pull Request: Comprehensive Health Check Implementation
+# Pull Request: Comprehensive Observability Features Implementation
 
 ## Summary
-This PR implements a comprehensive health check system for the PropChain-BackEnd application, addressing issue #127: Missing Health Check Endpoints.
+This PR implements comprehensive observability features for the PropChain-BackEnd application, addressing issue #128: Missing Observability Features.
 
 ## Changes Made
 
-### 🏥 Enhanced Health Check System
-- **Detailed Health Checks**: Comprehensive monitoring of all system components
-- **Dependency Monitoring**: Configurable external service health checks
-- **Health Analytics**: Real-time metrics collection and historical tracking
-- **Automated Monitoring**: Scheduled health checks with automatic cleanup
+### 🔍 Distributed Tracing Implementation
+- **OpenTelemetry Integration**: Production-ready distributed tracing with OTLP exporters
+- **Auto-Instrumentation**: Automatic trace generation for HTTP requests, database queries, and blockchain operations
+- **Custom Spans**: Easy-to-use API for creating business-specific traces
+- **Resource Detection**: Automatic service metadata and environment detection
+- **Export Configuration**: Support for Jaeger, Tempo, and other OTLP-compatible backends
 
-### 📊 New Health Indicators
-- **Memory Health**: Monitor heap usage, system memory, and external memory
-- **CPU Health**: Track CPU usage, load averages, and system info
-- **Disk Health**: Monitor disk accessibility and storage health
-- **Dependencies Health**: Monitor external API endpoints and services
+### 📊 Custom Metrics Collection
+- **HTTP Metrics**: Request duration, count, size tracking with detailed labels
+- **Business Metrics**: Database query duration, blockchain operation timing, cache performance
+- **System Metrics**: CPU, memory, disk, and network monitoring
+- **Error Tracking**: Error rate monitoring by type and endpoint
+- **Prometheus Integration**: Standard metrics endpoint with custom collectors
 
-### 🔧 Enhanced Existing Indicators
-- **Database Health**: Added connection pool info, table count, and detailed diagnostics
-- **Redis Health**: Added read/write tests, server info, and memory statistics
-- **Blockchain Health**: Added gas price checks, block data, and balance queries
+### 🚀 Performance Monitoring
+- **Real-time Monitoring**: System and application performance metrics collection
+- **Health Assessment**: Automated health status (healthy/warning/critical) with configurable thresholds
+- **Historical Data**: Metrics retention and historical analysis
+- **Scheduled Collection**: Automated metrics collection with cleanup
+- **Alert Thresholds**: Configurable alerts for CPU, memory, error rate, and response time
 
-### 📈 Analytics & Monitoring
-- **Health Analytics Service**: Track metrics, response times, and success rates
-- **Scheduled Health Checks**: Automated monitoring (5min, 30min, hourly, daily)
-- **Manual Triggers**: On-demand health checks with different types
+### 🌐 Observability API Endpoints
+- `GET /metrics` - Prometheus metrics endpoint
+- `GET /observability/health` - Detailed health status with performance metrics
+- `GET /observability/metrics/current` - Current performance metrics snapshot
+- `GET /observability/metrics/history` - Historical metrics data
+- `GET /observability/metrics/average` - Average metrics over time period
+- `GET /observability/tracing/status` - Tracing service status
 
-### 🚀 New Endpoints
-- `GET /health` - Basic health check
-- `GET /health/detailed` - Comprehensive service health
-- `GET /health/comprehensive` - Full health with analytics
-- `GET /health/analytics` - Health metrics and statistics
-- `GET /health/analytics/clear` - Clear analytics data
-- `GET /health/dependencies` - View configured dependencies
-- `POST /health/trigger` - Manual health check trigger
-
-### 🧪 Testing & Documentation
-- **Comprehensive Tests**: Full test coverage for health endpoints
-- **Documentation**: Detailed health check documentation
-- **Configuration**: Environment variable setup and examples
+### ⚙️ Configuration & Documentation
+- **Environment Configuration**: Comprehensive observability settings
+- **Documentation**: Complete setup guide, usage examples, and best practices
+- **Integration Guides**: Jaeger, Prometheus, and Grafana setup instructions
+- **Troubleshooting Guide**: Common issues and solutions
 
 ## Files Added
-- `src/health/health-analytics.service.ts` - Analytics service
-- `src/health/health-scheduler.service.ts` - Scheduled health checks
-- `src/health/indicators/memory.health.ts` - Memory monitoring
-- `src/health/indicators/cpu.health.ts` - CPU monitoring
-- `src/health/indicators/disk.health.ts` - Disk monitoring
-- `src/health/indicators/dependencies.health.ts` - External dependencies
-- `test/health/health.controller.spec.ts` - Health endpoint tests
-- `docs/health-checks.md` - Complete documentation
+
+### Core Services
+- `src/observability/tracing.service.ts` - Enhanced OpenTelemetry tracing service
+- `src/observability/metrics.interceptor.ts` - Comprehensive metrics collection
+- `src/observability/performance-monitor.service.ts` - Real-time performance monitoring
+- `src/observability/observability.controller.ts` - Observability API endpoints
+- `src/observability/observability.module.ts` - NestJS module configuration
+
+### Configuration
+- `src/config/observability.config.ts` - Observability configuration settings
+- `docs/observability.md` - Complete documentation and usage guide
+
+### Environment
+- `.env.development` - Updated with observability configuration
 
 ## Files Modified
-- `src/health/health.controller.ts` - Enhanced with new endpoints
-- `src/health/health.module.ts` - Added new providers
-- `src/health/indicators/database.health.ts` - Enhanced diagnostics
-- `src/health/indicators/redis.health.ts` - Enhanced monitoring
-- `src/health/indicators/blockchain.health.ts` - Enhanced checks
+
+### Core Application
+- `src/app.module.ts` - Added observability module and configuration
+- `package.json` - Added OpenTelemetry exporter dependencies
 
 ## Acceptance Criteria Met
 
-✅ **Implement detailed health checks**
-- Comprehensive monitoring of database, Redis, blockchain, memory, CPU, and disk
-- Detailed diagnostics with response times and error reporting
-- Enhanced existing indicators with additional metrics
+✅ **Implement distributed tracing**
+- OpenTelemetry integration with auto-instrumentation
+- Configurable OTLP exporters (Jaeger, Tempo, etc.)
+- Custom span creation utilities
+- Semantic conventions and resource detection
+- Graceful shutdown handling
 
-✅ **Add dependency health monitoring**
-- Configurable external service monitoring
-- HTTP-based health checks with timeouts
-- Support for multiple external APIs and services
+✅ **Add custom metrics**
+- HTTP request/response metrics with detailed labels
+- Database query duration tracking
+- Blockchain operation monitoring
+- Cache performance metrics
+- Error rate and connection tracking
+- Prometheus integration with custom collectors
 
-✅ **Implement health check analytics**
-- Real-time metrics collection and storage
-- Historical data tracking (last 1000 metrics)
-- Service-specific statistics and success rates
-- Analytics endpoints for monitoring dashboards
+✅ **Implement performance monitoring**
+- Real-time system metrics (CPU, memory, network)
+- Application health monitoring with configurable thresholds
+- Historical data retention and analysis
+- Health status assessment (healthy/warning/critical)
+- Automated metrics collection and cleanup
 
 ## Configuration
 
 Add these environment variables to your `.env` file:
 
 ```bash
-# Health Check Dependencies (JSON array)
-HEALTH_CHECK_DEPENDENCIES=[
-  {
-    "name": "valuation-provider",
-    "url": "https://api.valuation-service.com/v1/health",
-    "timeout": 5000,
-    "method": "GET",
-    "expectedStatus": 200
+# OpenTelemetry Tracing
+OTEL_SERVICE_NAME=propchain-backend
+OTEL_SERVICE_VERSION=1.0.0
+OTEL_ENABLED=true
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+OTEL_SAMPLING_RATE=1.0
+
+# Metrics
+METRICS_ENABLED=true
+METRICS_PATH=/metrics
+METRICS_PORT=9090
+
+# Performance Monitoring
+PERFORMANCE_MONITORING_ENABLED=true
+PERFORMANCE_MONITORING_INTERVAL=30000
+PERFORMANCE_METRICS_RETENTION=86400000
+
+# Alert Thresholds
+CPU_ALERT_THRESHOLD=90
+MEMORY_ALERT_THRESHOLD=90
+ERROR_RATE_ALERT_THRESHOLD=5
+RESPONSE_TIME_ALERT_THRESHOLD=5000
+```
+
+## Quick Start
+
+### 1. Install Dependencies
+```bash
+npm install
+```
+
+### 2. Start Jaeger (Optional)
+```bash
+docker run -d \
+  --name jaeger \
+  -p 16686:16686 \
+  -p 4317:4317 \
+  jaegertracing/all-in-one:latest
+```
+
+### 3. Start Application
+```bash
+npm run start:dev
+```
+
+### 4. View Metrics
+- **Prometheus Metrics**: http://localhost:3000/metrics
+- **Health Status**: http://localhost:3000/observability/health
+- **Current Metrics**: http://localhost:3000/observability/metrics/current
+- **Jaeger UI**: http://localhost:16686 (if running)
+
+## Integration Examples
+
+### Adding Custom Metrics
+```typescript
+@Injectable()
+export class PropertyService {
+  constructor(private metricsInterceptor: MetricsInterceptor) {}
+
+  async createProperty(data: CreatePropertyDto) {
+    const start = Date.now();
+    
+    try {
+      const property = await this.repository.create(data);
+      
+      this.metricsInterceptor.recordCustomMetric(
+        'property_creation_duration_seconds',
+        (Date.now() - start) / 1000,
+        { status: 'success' }
+      );
+      
+      return property;
+    } catch (error) {
+      this.metricsInterceptor.recordCustomMetric(
+        'property_creation_duration_seconds',
+        (Date.now() - start) / 1000,
+        { status: 'error', error_type: error.constructor.name }
+      );
+      throw error;
+    }
   }
-]
+}
+```
+
+### Adding Custom Spans
+```typescript
+@Injectable()
+export class BlockchainService {
+  constructor(private tracingService: TracingService) {}
+
+  async transferProperty(from: string, to: string, propertyId: string) {
+    const span = this.tracingService.createSpan('property-transfer', {
+      from, to, propertyId,
+      network: process.env.BLOCKCHAIN_NETWORK,
+    });
+
+    try {
+      const result = await this.contract.transfer(from, to, propertyId);
+      span.setAttributes({
+        transactionHash: result.hash,
+        gasUsed: result.gasUsed.toString(),
+      });
+      return result;
+    } catch (error) {
+      span.recordException(error);
+      throw error;
+    } finally {
+      span.end();
+    }
+  }
+}
 ```
 
 ## Testing
 
 ```bash
-# Run health check tests
-npm run test -- --testPathPattern=health
+# Run unit tests
+npm run test:unit
+
+# Run integration tests
+npm run test:integration
 
 # Run all tests
 npm run test:all
 ```
 
-## Kubernetes Integration
-
-The health endpoints are ready for Kubernetes:
-- **Liveness Probe**: `/health/liveness`
-- **Readiness Probe**: `/health/readiness`
-- **Startup Probe**: `/health`
-
 ## Performance Impact
 
-- Health checks are lightweight and non-blocking
-- Configurable timeouts prevent hanging
-- Scheduled checks use appropriate intervals
-- Metrics are limited to prevent memory issues
+- **Low Overhead**: Optimized metrics collection with minimal performance impact
+- **Configurable Sampling**: Adjustable tracing sampling rates for production
+- **Batch Processing**: Efficient batch processing for metrics export
+- **Memory Management**: Automatic cleanup of historical data
 
 ## Security Considerations
 
-- Health endpoints should be secured in production
-- Consider IP whitelisting for health endpoints
-- Rate limiting may be applied to prevent abuse
-- Sensitive information is filtered from responses
+- **Secure Endpoints**: Metrics endpoints should be secured in production
+- **Data Sanitization**: Sensitive data is filtered from traces and metrics
+- **Access Control**: Admin-only access to detailed observability data
+- **Rate Limiting**: Consider rate limiting for metrics endpoints
 
 ## Breaking Changes
 
-None. All existing health endpoints remain functional with enhanced functionality.
+None. All existing functionality remains unchanged. New observability features are additive.
 
 ## Related Issues
 
-Closes #127: Missing Health Check Endpoints
+Closes #128: Missing Observability Features
 
 ## Review Checklist
 
 - [ ] Code follows project style guidelines
 - [ ] All tests pass
-- [ ] Documentation is updated
+- [ ] Documentation is comprehensive
 - [ ] Environment variables are documented
 - [ ] Security considerations are addressed
 - [ ] Performance impact is minimal
 - [ ] Error handling is comprehensive
-- [ ] Logging is appropriate
+- [ ] Integration examples are provided
+- [ ] Troubleshooting guide is included
