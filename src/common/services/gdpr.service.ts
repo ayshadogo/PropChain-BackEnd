@@ -1,6 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { AuditService, AuditOperation } from './audit.service';
+import { ConsentType, GdprRequestType, GdprRequestStatus } from '../dto/compliance.dto';
+import { v4 as uuidv4 } from 'uuid';
 
 export interface UserDataExport {
   user: any;
@@ -12,6 +14,9 @@ export interface UserDataExport {
 
 @Injectable()
 export class GdprService {
+  private readonly logger = new Logger(GdprService.name);
+  private readonly gdprDeadlineDays: number = 30; // GDPR requires response within 30 days
+
   constructor(
     private prisma: PrismaService,
     private auditService: AuditService,
@@ -88,7 +93,7 @@ export class GdprService {
     // For financial/real estate applications, we may want to preserve records for legal reasons
     // So we'll anonymize the user instead of completely deleting
 
-    await this.prisma.$transaction(async tx => {
+    await this.prisma.$transaction(async (tx: any) => {
       // Anonymize user data (keep for legal compliance but remove personal info)
       await tx.user.update({
         where: { id: userId },
@@ -136,7 +141,7 @@ export class GdprService {
       throw new Error('User not found');
     }
 
-    await this.prisma.$transaction(async tx => {
+    await this.prisma.$transaction(async (tx: any) => {
       // Store original data for audit before anonymization
       const originalData = {
         id: user.id,
