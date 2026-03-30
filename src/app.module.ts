@@ -59,6 +59,7 @@ import { ApiVersionModule } from './common/api-version';
 
 // Feature Flags
 import { FeatureFlagModule } from './feature-flags/feature-flag.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 // Static Cache
 import { StaticCacheModule } from './static-cache/static-cache.module';
@@ -169,6 +170,7 @@ import { BoundaryValidationModule } from './common/validation';
 
     // Feature Flags
     FeatureFlagModule,
+    AnalyticsModule,
 
     // Static Cache
     StaticCacheModule,
