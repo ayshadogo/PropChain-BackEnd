@@ -39,7 +39,44 @@ getAllUsers() {
 
 New users are automatically assigned the `USER` role upon registration.
 
-## 📋 Prerequisites
+## � Password Reset
+
+The application provides secure password reset functionality via email:
+
+### Password Reset Flow
+
+1. **Request Reset**: User submits email address
+2. **Token Generation**: Secure reset token created (expires in 1 hour)
+3. **Email Delivery**: Reset link sent to user's email
+4. **Token Validation**: Token verified on password reset
+5. **Password Update**: New password hashed and stored
+
+### API Endpoints
+
+```bash
+# Request password reset
+POST /auth/password-reset/request
+{
+  "email": "user@example.com"
+}
+
+# Reset password with token
+POST /auth/password-reset/reset
+{
+  "token": "reset-token-here",
+  "newPassword": "NewSecurePassword123!"
+}
+```
+
+### Security Features
+
+- **Token Expiration**: Reset tokens expire after 1 hour
+- **Single Use**: Tokens can only be used once
+- **Password History**: Prevents reuse of recent passwords
+- **Rate Limiting**: Previous tokens invalidated on new request
+- **Blocked User Protection**: No emails sent to blocked accounts
+
+## �📋 Prerequisites
 
 - Node.js >= 18.0.0
 - PostgreSQL >= 14
