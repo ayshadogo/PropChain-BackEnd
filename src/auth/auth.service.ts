@@ -5,17 +5,20 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ApiKey, Prisma, TokenType, User } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../database/prisma.service';
 import { UsersService } from '../users/users.service';
+import { EmailService } from '../email/email.service';
 import {
   ChangePasswordDto,
   CreateApiKeyDto,
   LoginDto,
   RefreshTokenDto,
   RegisterDto,
+  RequestPasswordResetDto,
+  ResetPasswordDto,
   VerifyTwoFactorDto,
 } from './dto/auth.dto';
 import {
@@ -35,9 +38,12 @@ import {
 } from './security.utils';
 import { AuthUserPayload } from './types/auth-user.type';
 
+import { UserRole } from '@prisma/client';
+
 type JwtPayload = {
   sub: string;
   email: string;
+  role: UserRole;
   type: 'access' | 'refresh';
   jti: string;
   exp?: number;
@@ -50,11 +56,13 @@ export class AuthService {
   private readonly refreshTokenTtlSeconds: number;
   private readonly jwtSecret: string;
   private readonly jwtRefreshSecret: string;
+  private readonly bcryptRounds: number;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly usersService: UsersService,
     private readonly configService: ConfigService,
+    private readonly emailService: EmailService,
   ) {
     this.jwtSecret = this.configService.get<string>('JWT_SECRET') ?? 'propchain-access-secret';
     this.jwtRefreshSecret =
@@ -67,6 +75,7 @@ export class AuthService {
       this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '7d',
       7 * 24 * 60 * 60,
     );
+    this.bcryptRounds = parseInt(this.configService.get<string>('BCRYPT_ROUNDS') ?? '12', 10);
   }
 
   async register(data: RegisterDto) {
@@ -75,7 +84,7 @@ export class AuthService {
       throw new BadRequestException('A user with that email already exists');
     }
 
-    const passwordHash = await hashPassword(data.password);
+    const passwordHash = await hashPassword(data.password, this.bcryptRounds);
     const user = await this.prisma.user.create({
       data: {
         email: data.email,
@@ -102,6 +111,10 @@ export class AuthService {
     const user = await this.usersService.findByEmail(data.email);
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (user.isBlocked) {
+      throw new UnauthorizedException('Your account has been blocked. Please contact support.');
     }
 
     const passwordMatches = await comparePassword(data.password, user.password);
@@ -166,13 +179,17 @@ export class AuthService {
       throw new UnauthorizedException('User no longer exists');
     }
 
+    if (user.isBlocked) {
+      throw new UnauthorizedException('Your account has been blocked');
+    }
+
     if (user.id !== payload.sub) {
       throw new UnauthorizedException('Refresh token does not match the authenticated user');
     }
 
     await this.blacklistToken({
       jti: payload.jti,
-      tokenType: TokenType.REFRESH,
+      tokenType: 'REFRESH',
       expiresAt: new Date((payload.exp ?? 0) * 1000),
       userId: user.id,
     });
@@ -189,7 +206,7 @@ export class AuthService {
       const accessPayload = this.verifyToken(accessToken, this.jwtSecret) as JwtPayload;
       await this.blacklistToken({
         jti: accessPayload.jti,
-        tokenType: TokenType.ACCESS,
+        tokenType: 'ACCESS',
         expiresAt: new Date((accessPayload.exp ?? 0) * 1000),
         userId: user.sub,
       });
@@ -203,7 +220,7 @@ export class AuthService {
 
       await this.blacklistToken({
         jti: refreshPayload.jti,
-        tokenType: TokenType.REFRESH,
+        tokenType: 'REFRESH',
         expiresAt: new Date((refreshPayload.exp ?? 0) * 1000),
         userId: user.sub,
       });
@@ -417,7 +434,7 @@ export class AuthService {
       );
     }
 
-    const newPasswordHash = await hashPassword(data.newPassword);
+    const newPasswordHash = await hashPassword(data.newPassword, this.bcryptRounds);
 
     await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.user.update({
@@ -566,7 +583,7 @@ export class AuthService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return apiKeys.map((apiKey: ApiKey) => this.toApiKeyResponse(apiKey));
+    return apiKeys.map((apiKey: any) => this.toApiKeyResponse(apiKey));
   }
 
   async rotateApiKey(user: AuthUserPayload, apiKeyId: string) {
@@ -628,6 +645,7 @@ export class AuthService {
     return {
       sub: payload.sub,
       email: payload.email,
+      role: payload.role,
       type: 'access',
       jti: payload.jti,
     };
@@ -647,6 +665,10 @@ export class AuthService {
       throw new UnauthorizedException('Invalid API key');
     }
 
+    if (apiKey.user.isBlocked) {
+      throw new UnauthorizedException('User account is blocked');
+    }
+
     await this.prisma.apiKey.update({
       where: { id: apiKey.id },
       data: {
@@ -657,12 +679,13 @@ export class AuthService {
     return {
       sub: apiKey.userId,
       email: apiKey.user.email,
+      role: apiKey.user.role,
       type: 'api-key',
       apiKeyId: apiKey.id,
     };
   }
 
-  private async issueTokenPair(user: User) {
+  private async issueTokenPair(user: any) {
     const accessJti = randomUUID();
     const refreshJti = randomUUID();
 
@@ -670,6 +693,7 @@ export class AuthService {
       {
         sub: user.id,
         email: user.email,
+        role: user.role,
         type: 'access',
         jti: accessJti,
       },
@@ -681,6 +705,7 @@ export class AuthService {
       {
         sub: user.id,
         email: user.email,
+        role: user.role,
         type: 'refresh',
         jti: refreshJti,
       },
@@ -725,7 +750,7 @@ export class AuthService {
 
   private async blacklistToken(data: {
     jti: string;
-    tokenType: TokenType;
+    tokenType: 'ACCESS' | 'REFRESH';
     expiresAt: Date;
     userId?: string;
   }) {
@@ -744,7 +769,7 @@ export class AuthService {
     return `pc_${randomToken(24)}`;
   }
 
-  private toApiKeyResponse(apiKey: ApiKey) {
+  private toApiKeyResponse(apiKey: any) {
     return {
       id: apiKey.id,
       name: apiKey.name,
@@ -755,5 +780,123 @@ export class AuthService {
       createdAt: apiKey.createdAt,
       updatedAt: apiKey.updatedAt,
     };
+  }
+
+  async requestPasswordReset(data: RequestPasswordResetDto): Promise<void> {
+    const user = await this.usersService.findByEmail(data.email);
+    if (!user) {
+      // Don't reveal if email exists or not for security
+      return;
+    }
+
+    if (user.isBlocked) {
+      // Don't send reset emails to blocked users
+      return;
+    }
+
+    // Invalidate any existing reset tokens for this user
+    await this.prisma.passwordResetToken.updateMany({
+      where: {
+        userId: user.id,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      data: {
+        expiresAt: new Date(), // Expire immediately
+      },
+    });
+
+    // Generate new reset token
+    const resetToken = randomToken(32);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await this.prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        token: resetToken,
+        expiresAt,
+      },
+    });
+
+    // Send reset email
+    await this.emailService.sendPasswordResetEmail(user.email, resetToken);
+  }
+
+  async resetPassword(data: ResetPasswordDto): Promise<void> {
+    const resetToken = await this.prisma.passwordResetToken.findUnique({
+      where: { token: data.token },
+      include: { user: true },
+    });
+
+    if (!resetToken) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
+    if (resetToken.usedAt) {
+      throw new BadRequestException('Reset token has already been used');
+    }
+
+    if (resetToken.expiresAt < new Date()) {
+      throw new BadRequestException('Reset token has expired');
+    }
+
+    if (resetToken.user.isBlocked) {
+      throw new BadRequestException('Account is blocked');
+    }
+
+    const passwordHistoryLimit = getPasswordHistoryLimit();
+
+    // Check if new password was used recently
+    const recentPasswords = await this.prisma.passwordHistory.findMany({
+      where: { userId: resetToken.userId },
+      orderBy: { createdAt: 'desc' },
+      take: passwordHistoryLimit,
+    });
+
+    for (const historyEntry of recentPasswords) {
+      const isReused = await comparePassword(data.newPassword, historyEntry.passwordHash);
+      if (isReused) {
+        throw new BadRequestException(
+          `Password reuse is not allowed for the last ${passwordHistoryLimit} passwords`,
+        );
+      }
+    }
+
+    const newPasswordHash = await hashPassword(data.newPassword, this.bcryptRounds);
+
+    // Update password and mark token as used in a transaction
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await tx.user.update({
+        where: { id: resetToken.userId },
+        data: { password: newPasswordHash },
+      });
+
+      await tx.passwordResetToken.update({
+        where: { id: resetToken.id },
+        data: { usedAt: new Date() },
+      });
+
+      await tx.passwordHistory.create({
+        data: {
+          userId: resetToken.userId,
+          passwordHash: newPasswordHash,
+        },
+      });
+
+      // Clean up old password history entries
+      const historyEntries = await tx.passwordHistory.findMany({
+        where: { userId: resetToken.userId },
+        orderBy: { createdAt: 'desc' },
+        skip: passwordHistoryLimit,
+      });
+
+      if (historyEntries.length > 0) {
+        await tx.passwordHistory.deleteMany({
+          where: {
+            id: { in: historyEntries.map(entry => entry.id) },
+          },
+        });
+      }
+    });
   }
 }

@@ -84,6 +84,48 @@ export class UsersService {
     });
   }
 
+  async updateAvatar(id: string, avatarUrl: string | null) {
+    return this.prisma.user.update({
+      where: { id },
+      data: { avatar: avatarUrl },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        role: true,
+        isVerified: true,
+        avatar: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  async block(id: string) {
+    return this.prisma.user.update({
+      where: { id },
+      data: { isBlocked: true },
+      select: {
+        id: true,
+        email: true,
+        isBlocked: true,
+      },
+    });
+  }
+
+  async unblock(id: string) {
+    return this.prisma.user.update({
+      where: { id },
+      data: { isBlocked: false },
+      select: {
+        id: true,
+        email: true,
+        isBlocked: true,
+      },
+    });
+  }
+
   async remove(id: string) {
     return this.prisma.user.delete({
       where: { id },
