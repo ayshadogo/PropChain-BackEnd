@@ -24,7 +24,10 @@ export async function comparePassword(password: string, passwordHash: string): P
 }
 
 export function sanitizeUser<T extends Record<string, unknown>>(user: T) {
-  const { password, twoFactorSecret, twoFactorBackupCodes, ...safeUser } = user;
+  const safeUser = { ...user };
+  delete safeUser.password;
+  delete safeUser.twoFactorSecret;
+  delete safeUser.twoFactorBackupCodes;
   return safeUser;
 }
 

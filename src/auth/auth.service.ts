@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { ApiKey, Prisma, TokenType, User } from '@prisma/client';
 import { randomUUID } from 'crypto';
+import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../database/prisma.service';
 import { UsersService } from '../users/users.service';
 import {
@@ -33,8 +34,6 @@ import {
   verifyTotpCode,
 } from './security.utils';
 import { AuthUserPayload } from './types/auth-user.type';
-
-const jwt = require('jsonwebtoken');
 
 type JwtPayload = {
   sub: string;
@@ -137,9 +136,7 @@ export class AuthService {
           where: { id: user.id },
           data: {
             twoFactorBackupCodes: {
-              set: user.twoFactorBackupCodes.filter(
-                (code: string) => code !== matchingBackupCode,
-              ),
+              set: user.twoFactorBackupCodes.filter((code: string) => code !== matchingBackupCode),
             },
           },
         });
@@ -242,15 +239,20 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    const currentPasswordMatches = await comparePassword(data.currentPassword, existingUser.password);
+    const currentPasswordMatches = await comparePassword(
+      data.currentPassword,
+      existingUser.password,
+    );
     if (!currentPasswordMatches) {
       throw new UnauthorizedException('Current password is incorrect');
     }
 
     const passwordReused = await Promise.all(
-      existingUser.passwordHistory.slice(0, passwordHistoryLimit).map((entry: { passwordHash: string }) =>
-        comparePassword(data.newPassword, entry.passwordHash),
-      ),
+      existingUser.passwordHistory
+        .slice(0, passwordHistoryLimit)
+        .map((entry: { passwordHash: string }) =>
+          comparePassword(data.newPassword, entry.passwordHash),
+        ),
     );
 
     if (passwordReused.some(Boolean)) {
